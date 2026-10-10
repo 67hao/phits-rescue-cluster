@@ -1,8 +1,14 @@
-name: PHITS 20-Runner Parallel Simulation (Paper 10.1)
+﻿name: PHITS 20-Runner Parallel Simulation (Paper 10.1)
 
 on:
   workflow_dispatch:
     inputs:
+      primaries:
+        required: false
+        default: '100000'
+      gdrive_folder:
+        required: false
+        default: ''
       sample_filter:
         description: 'Chon mau can chay (All, S1, S2, S3, S4, S5, S6, S7, S8)'
         required: true
