@@ -1,0 +1,93 @@
+name: PHITS 20-Runner Parallel Simulation (Paper 10.1)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sample_filter:
+        description: 'Chon mau can chay (All, S1, S2, S3, S4, S5, S6, S7, S8)'
+        required: true
+        default: 'All'
+        type: choice
+        options:
+          - All
+          - S1
+          - S2
+          - S3
+          - S4
+          - S5
+          - S6
+          - S7
+          - S8
+      maxcas:
+        description: 'So hat moi job (mac dinh: 100000000 = 10^8)'
+        required: true
+        default: '100000000'
+        type: string
+      omp:
+        description: 'So luong thread OpenMP moi job (mac dinh: 2)'
+        required: true
+        default: '2'
+        type: string
+
+jobs:
+  run-phits:
+    name: PHITS Runner #${{ matrix.runner_id }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_id: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pandas openpyxl google-api-python-client google-auth-httplib2 google-auth-oauthlib numpy
+
+      - name: Run PHITS Worker & Stream to Google Drive
+        env:
+          GDRIVE_OAUTH_JSON: ${{ secrets.GDRIVE_OAUTH_JSON }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          python3 run_phits_task.py \
+            --runner-id ${{ matrix.runner_id }} \
+            --num-runners 20 \
+            --sample-filter "${{ github.event.inputs.sample_filter }}" \
+            --maxcas ${{ github.event.inputs.maxcas }} \
+            --omp ${{ github.event.inputs.omp }} \
+            --timeout-hours 5.4
+
+  aggregate-and-summarize:
+    name: Merge Results & Generate Paper 1 Excel
+    needs: run-phits
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pandas openpyxl google-api-python-client google-auth-httplib2 google-auth-oauthlib numpy
+
+      - name: Aggregate All Results from Google Drive & Generate 14-Sheet Excel
+        env:
+          GDRIVE_OAUTH_JSON: ${{ secrets.GDRIVE_OAUTH_JSON }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          python3 aggregate_and_calculate.py

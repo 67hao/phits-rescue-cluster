@@ -1,0 +1,122 @@
+name: FLUKA 16-Core Parallel Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      primaries:
+        description: 'Số hạt mỗi task (mặc định: 250,000)'
+        required: false
+        default: '250000'
+        type: string
+
+jobs:
+  run-fluka-tasks:
+    name: Run Task ${{ matrix.task_id }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        task_id: [
+          "01", "02", "03", "04",
+          "05", "06", "07", "08",
+          "09", "10", "11", "12",
+          "13", "14", "15", "16"
+        ]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Reassemble & Install FLUKA
+        shell: bash
+        run: |
+          echo ">>> Reassembling FLUKA package..."
+          cat packages/fluka_deb.part_* > fluka.deb
+          
+          echo ">>> Installing gfortran-9 and dependencies..."
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gfortran-9 libgfortran5
+          sudo dpkg -i --force-depends fluka.deb || sudo apt-get install -f -y -qq
+          
+          which rfluka || true
+
+      - name: Run FLUKA Simulation (Task ${{ matrix.task_id }})
+        shell: bash
+        run: |
+          TASK_DIR="inputs/task_${{ matrix.task_id }}"
+          cd "$TASK_DIR"
+          
+          export PATH="/usr/local/flukagfor/bin:/usr/local/fluka/bin:/usr/local/bin:$PATH"
+          export FLUFOR=gfortran
+          
+          echo ">>> [STARTING] rfluka for task_${{ matrix.task_id }}..."
+          rfluka -N0 -M1 "task_${{ matrix.task_id }}.inp" || {
+            EXIT_CODE=$?
+            echo "=== FLUKA EXITED WITH CODE $EXIT_CODE ==="
+            echo "--- LISTING RUN DIRECTORY ---"
+            ls -la
+            ls -la fluka_* 2>/dev/null || true
+            for f in fluka_*/*; do
+              if [ -f "$f" ]; then
+                echo "=== FILE: $f ==="
+                cat "$f" | tail -n 80 || true
+              fi
+            done
+            exit $EXIT_CODE
+          }
+          
+          echo ">>> [FINISHED] Output directory contents:"
+          ls -lh
+
+      - name: Upload Task Output Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: task_${{ matrix.task_id }}_results
+          path: |
+            inputs/task_${{ matrix.task_id }}/*.lis
+            inputs/task_${{ matrix.task_id }}/*.out
+            inputs/task_${{ matrix.task_id }}/*.log
+            inputs/task_${{ matrix.task_id }}/*fort*
+          retention-days: 7
+
+  merge-and-summarize:
+    name: Merge Results & Generate Summary
+    needs: run-fluka-tasks
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download all Task Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded_artifacts
+
+      - name: Organize Artifacts and Merge Data
+        shell: bash
+        run: |
+          for i in $(seq -w 1 16); do
+            SRC="downloaded_artifacts/task_${i}_results"
+            DST="inputs/task_${i}"
+            if [ -d "$SRC" ]; then
+              cp -r "$SRC"/* "$DST"/ 2>/dev/null || true
+            fi
+          done
+          
+          python3 merge_and_plot.py
+
+      - name: Upload Final Summary Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: FLUKA_16_TASKS_FINAL_SUMMARY
+          path: |
+            summary_results.csv
+            inputs/
+          retention-days: 14
