@@ -276,17 +276,20 @@ def main():
     # 4. Partition disjoint slice for this runner
     if args.mode == "rescue":
         missing_jobs = [j for j in all_jobs if j["flat_csv_name"].lower() not in existing_drive_files]
-        my_jobs = [j for i, j in enumerate(missing_jobs) if i % total_runners == global_runner_id]
-        todo_jobs = my_jobs
-        print(f">>> [RESCUE MODE] Tong so jobs thieu toan cum: {len(missing_jobs)} | Phan cho Runner #{args.runner_id}: {len(my_jobs)} jobs")
+        print(f">>> [RESCUE MODE] Tong so jobs thieu toan cum: {len(missing_jobs)}")
+        if not missing_jobs:
+            print("🎉 Khong con job nao thieu tren Drive! Thoat som.")
+            return
+        offset = (global_runner_id * 3) % len(missing_jobs)
+        todo_jobs = missing_jobs[offset:] + missing_jobs[:offset]
+        print(f">>> [RUNNER #{args.runner_id} (Global #{global_runner_id+1})] Rescue queue: {len(todo_jobs)} jobs (Offset: {offset})")
     else:
         my_jobs = [j for i, j in enumerate(all_jobs) if i % total_runners == global_runner_id]
         todo_jobs = [j for j in my_jobs if j["flat_csv_name"].lower() not in existing_drive_files]
         print(f">>> [RUNNER #{args.runner_id}] Duoc phan bo: {len(my_jobs)} jobs | Da xong: {len(my_jobs) - len(todo_jobs)} | Can chay: {len(todo_jobs)} jobs")
 
-
     if not todo_jobs:
-        print(f"🎉 Toan bo {len(my_jobs)} jobs cua Runner #{args.runner_id} da hoan tat 100%! Thoat som.")
+        print(f"🎉 Toan bo jobs cua Runner #{args.runner_id} da hoan tat 100%! Thoat som.")
         return
 
     # 5. Execute simulation loop
@@ -306,6 +309,19 @@ def main():
         jdir = job["dir"]
         jinp = job["inp"]
         flat_csv = job["flat_csv_name"]
+
+        # Kiem tra nhanh neu job da duoc runner khac upload len Drive
+        if args.mode == "rescue" and drive_service and "02_Flux_Data" in folder_ids:
+            try:
+                check_q = f"'{folder_ids['02_Flux_Data']}' in parents and name = '{flat_csv}' and trashed = false"
+                check_res = drive_service.files().list(q=check_q, supportsAllDrives=True, includeItemsFromAllDrives=True, fields="files(id)").execute()
+                if check_res.get("files"):
+                    print(f"[{idx}/{len(todo_jobs)}] SKIP: {flat_csv} da duoc runner khac hoan tat!")
+                    existing_drive_files.add(flat_csv.lower())
+                    continue
+            except Exception:
+                pass
+
 
         print(f"\n--- [{idx}/{len(todo_jobs)}] Runner #{args.runner_id} ({acc_name}) dang chay FLUKA: {jname} (10^8 hat) ---")
         t0 = time.time()
