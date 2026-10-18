@@ -13,6 +13,12 @@ on:
         required: true
         default: '100000000'
         type: string
+      mode:
+        description: 'Execution mode: normal or rescue'
+        required: false
+        default: 'normal'
+        type: string
+
 
 jobs:
   run-fluka:
@@ -67,4 +73,6 @@ jobs:
             --account-name "${{ github.repository_owner }}" \
             --gdrive-folder "${{ github.event.inputs.gdrive_folder }}" \
             --primaries ${{ github.event.inputs.primaries }} \
+            --mode "${{ github.event.inputs.mode || 'normal' }}" \
             --timeout-hours 5.4
+

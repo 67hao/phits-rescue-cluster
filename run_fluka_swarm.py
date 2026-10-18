@@ -56,7 +56,9 @@ def parse_args():
     parser.add_argument("--primaries", type=int, default=100000000, help="Number of particles per job (10^8)")
     parser.add_argument("--excel-table", type=str, default="thickness_table_all9.xlsx", help="Excel thickness matrix")
     parser.add_argument("--timeout-hours", type=float, default=5.4, help="Safe timeout limit")
+    parser.add_argument("--mode", type=str, default="normal", choices=["normal", "rescue"], help="Execution mode: normal or rescue")
     return parser.parse_args()
+
 
 
 def find_fluka_binaries():
@@ -272,10 +274,16 @@ def main():
     print(f">>> [PLAN] Tong so job toan bo nghien cuu: {len(all_jobs)}")
 
     # 4. Partition disjoint slice for this runner
-    my_jobs = [j for i, j in enumerate(all_jobs) if i % total_runners == global_runner_id]
-    todo_jobs = [j for j in my_jobs if j["flat_csv_name"].lower() not in existing_drive_files]
+    if args.mode == "rescue":
+        missing_jobs = [j for j in all_jobs if j["flat_csv_name"].lower() not in existing_drive_files]
+        my_jobs = [j for i, j in enumerate(missing_jobs) if i % total_runners == global_runner_id]
+        todo_jobs = my_jobs
+        print(f">>> [RESCUE MODE] Tong so jobs thieu toan cum: {len(missing_jobs)} | Phan cho Runner #{args.runner_id}: {len(my_jobs)} jobs")
+    else:
+        my_jobs = [j for i, j in enumerate(all_jobs) if i % total_runners == global_runner_id]
+        todo_jobs = [j for j in my_jobs if j["flat_csv_name"].lower() not in existing_drive_files]
+        print(f">>> [RUNNER #{args.runner_id}] Duoc phan bo: {len(my_jobs)} jobs | Da xong: {len(my_jobs) - len(todo_jobs)} | Can chay: {len(todo_jobs)} jobs")
 
-    print(f">>> [RUNNER #{args.runner_id}] Duoc phan bo: {len(my_jobs)} jobs | Da xong: {len(my_jobs) - len(todo_jobs)} | Can chay: {len(todo_jobs)} jobs")
 
     if not todo_jobs:
         print(f"🎉 Toan bo {len(my_jobs)} jobs cua Runner #{args.runner_id} da hoan tat 100%! Thoat som.")
